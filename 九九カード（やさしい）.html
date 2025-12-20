@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>やさしい九九 - スタンプ帳つき</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* アニメーションの調整（ブレ軽減のためスケール変化を控えめに） */
+        @keyframes pop { 0% { transform: scale(0.95); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        .animate-pop { animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-10px); } 75% { transform: translateX(10px); } }
+        .shake { animation: shake 0.5s; }
+        body { touch-action: manipulation; background-color: #fff7ed; }
+        
+        /* スクロールバーによるガタつき防止：常にスクロール領域を確保 */
+        .scroll-stable { overflow-y: scroll; } 
+        
+        /* スクロールバー装飾 */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #fff7ed; }
+        ::-webkit-scrollbar-thumb { background: #fdba74; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #fb923c; }
+    </style>
+</head>
+<body class="text-stone-700 font-sans select-none">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- アイコン ---
+        const IconBase = ({ children, className, onClick }) => (
+            <svg onClick={onClick} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{children}</svg>
+        );
+        const Volume2 = (props) => <IconBase {...props}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></IconBase>;
+        const VolumeX = (props) => <IconBase {...props}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" x2="17" y1="9" y2="15"/><line x1="17" x2="23" y1="9" y2="15"/></IconBase>;
+        const Languages = (props) => <IconBase {...props}><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></IconBase>;
+        const Mic = (props) => <IconBase {...props}><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/><line x1="8" x2="16" y1="22" y2="22"/></IconBase>;
+        const MicOff = (props) => <IconBase {...props}><line x1="2" x2="22" y1="2" y2="22"/><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/><path d="M5 10v2a7 7 0 0 0 12 5"/><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><line x1="12" x2="12" y1="19" y2="22"/><line x1="8" x2="16" y1="22" y2="22"/></IconBase>;
+        const Home = (props) => <IconBase {...props}><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></IconBase>;
+        const RefreshCw = (props) => <IconBase {...props}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></IconBase>;
+        const UserCircle = (props) => <IconBase {...props}><circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662"/></IconBase>;
+        const Trash2 = (props) => <IconBase {...props}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></IconBase>;
+        
+        // --- Data ---
+        const kukuReadings = {
+            1: ["いんいちが いち", "いんにが に", "いんさんが さん", "いんしが し", "いんごが ご", "いんろくが ろく", "いんしちが しち", "いんはちが はち", "いんくが く"],
+            2: ["にいちが に", "ににんが し", "にさんが ろく", "にしが はち", "にご じゅう", "にろく じゅうに", "にしち じゅうし", "にはち じゅうろく", "にく じゅうはち"],
+            3: ["さんいちが さん", "さんにが ろく", "さざんが く", "さんし じゅうに", "さんご じゅうご", "さぶろく じゅうはち", "さんしち にじゅういち", "さんぱ にじゅうし", "さんく にじゅうしち"],
+            4: ["しいちが し", "しにが はち", "しさんが じゅうに", "しし じゅうろく", "しご にじゅう", "しろく にじゅうし", "ししち にじゅうはち", "しは さんじゅうに", "しく さんじゅうろく"],
+            5: ["ごいちが ご", "ごに じゅう", "ごさん じゅうご", "ごし にじゅう", "ごご にじゅうご", "ごろく さんじゅう", "ごしち さんじゅうご", "ごは しじゅう", "ごっく しじゅうご"],
+            6: ["ろくいちが ろく", "ろくに じゅうに", "ろくさん じゅうはち", "ろくし にじゅうし", "ろくご さんじゅう", "ろくろく さんじゅうろく", "ろくしち しじゅうに", "ろくは しじゅうはち", "ろっく ごじゅうし"],
+            7: ["しちいちが しち", "しちに じゅうし", "しちさん にじゅういち", "しちし にじゅうはち", "しちご さんじゅうご", "しちろく しじゅうに", "しちしち しじゅうく", "しちは ごじゅうろく", "しちく ろくじゅうさん"],
+            8: ["はちいちが はち", "はちに じゅうろく", "はちさん にじゅうし", "はちし さんじゅうに", "はちご しじゅう", "はちろく しじゅうはち", "はちしち ごじゅうろく", "はっぱ ろくじゅうし", "はっく しちじゅうに"],
+            9: ["くいちが く", "くに じゅうはち", "くさん にじゅうしち", "くし さんじゅうろく", "くご しじゅうご", "くろく ごじゅうし", "くしち ろくじゅうさん", "くは しちじゅうに", "くく はちじゅういち"]
+        };
+
+        // --- Services ---
+        class SoundService {
+            constructor() { this.ctx = null; }
+            getContext() {
+                if (!this.ctx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    if (AudioContext) this.ctx = new AudioContext();
+                }
+                return this.ctx;
+            }
+            playCorrect() {
+                const ctx = this.getContext(); if (!ctx) return;
+                if (ctx.state === 'suspended') ctx.resume();
+                const t = ctx.currentTime;
+                const osc1 = ctx.createOscillator(); const gain1 = ctx.createGain();
+                osc1.type = 'triangle'; osc1.frequency.setValueAtTime(660, t);
+                gain1.gain.setValueAtTime(0.1, t); gain1.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
+                osc1.connect(gain1); gain1.connect(ctx.destination); osc1.start(t); osc1.stop(t + 0.3);
+                
+                const osc2 = ctx.createOscillator(); const gain2 = ctx.createGain();
+                osc2.type = 'triangle'; osc2.frequency.setValueAtTime(1320, t + 0.1);
+                gain2.gain.setValueAtTime(0.1, t + 0.1); gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+                osc2.connect(gain2); gain2.connect(ctx.destination); osc2.start(t + 0.1); osc2.stop(t + 0.5);
+            }
+            playWrong() {
+                const ctx = this.getContext(); if (!ctx) return;
+                if (ctx.state === 'suspended') ctx.resume();
+                const t = ctx.currentTime;
+                const osc = ctx.createOscillator(); const gain = ctx.createGain();
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, t); osc.frequency.linearRampToValueAtTime(100, t + 0.15);
+                gain.gain.setValueAtTime(0.1, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+                osc.connect(gain); gain.connect(ctx.destination); osc.start(t); osc.stop(t + 0.3);
+            }
+            playStamp() {
+                const ctx = this.getContext(); if (!ctx) return;
+                if (ctx.state === 'suspended') ctx.resume();
+                const t = ctx.currentTime;
+                const osc = ctx.createOscillator(); const gain = ctx.createGain();
+                osc.type = 'sine'; osc.frequency.setValueAtTime(300, t); osc.frequency.exponentialRampToValueAtTime(600, t + 0.05);
+                gain.gain.setValueAtTime(0.2, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+                osc.connect(gain); gain.connect(ctx.destination); osc.start(t); osc.stop(t + 0.2);
+            }
+        }
+        const soundService = new SoundService();
+
+        class SpeechService {
+            speak(text) {
+                window.speechSynthesis.cancel();
+                const uttr = new SpeechSynthesisUtterance(text);
+                uttr.lang = 'ja-JP'; uttr.rate = 1.0; uttr.pitch = 1.1;
+                window.speechSynthesis.speak(uttr);
+            }
+        }
+        const speechService = new SpeechService();
+
+        // --- Logic ---
+        const getReading = (dan, multiplier) => kukuReadings[dan][multiplier - 1];
+        const generateQuestions = (dan, level) => {
+            return [1, 2, 3, 4, 5, 6, 7, 8, 9].map(m => {
+                const product = dan * m;
+                let missingPart = level === 1 ? 'dan' : level === 2 ? 'multiplier' : 'product';
+                let options = level === 1 ? [dan] : level === 2 ? [1,2,3,4,5,6,7,8,9] : [1,2,3,4,5,6,7,8,9].map(mul => dan * mul);
+                return { dan, multiplier: m, product, missingPart, options };
+            });
+        };
+
+        // --- Components ---
+        
+        // 親向け管理画面
+        const ParentDashboard = ({ history, onClose, onDelete, onDeleteAll }) => {
+            return (
+                <div className="absolute inset-0 bg-white/95 z-50 flex flex-col p-6 animate-pop overflow-hidden">
+                    <header className="flex justify-between items-center mb-6 pb-4 border-b-2 border-orange-100">
+                        <div className="flex items-center gap-3">
+                            <UserCircle className="w-8 h-8 text-orange-500" />
+                            <h2 className="text-2xl font-bold text-stone-700">保護者用：学習のきろく</h2>
+                        </div>
+                        <div className="flex gap-2">
+                             {/* 一括削除ボタン */}
+                             {history.length > 0 && (
+                                <button onClick={onDeleteAll} className="px-4 py-2 bg-rose-100 text-rose-500 rounded-full font-bold hover:bg-rose-200 transition-colors flex items-center gap-1">
+                                    <Trash2 className="w-4 h-4" /> 全削除
+                                </button>
+                            )}
+                            <button onClick={onClose} className="px-6 py-2 bg-stone-500 text-white rounded-full font-bold hover:bg-stone-600">とじる</button>
+                        </div>
+                    </header>
+                    
+                    <div className="flex-1 overflow-y-auto">
+                        {history.length === 0 ? (
+                            <p className="text-stone-400 text-center py-10">まだきろくはありません。</p>
+                        ) : (
+                            <table className="w-full text-left border-collapse">
+                                <thead className="sticky top-0 bg-white/95">
+                                    <tr className="border-b-2 border-orange-200 text-stone-500 text-sm">
+                                        <th className="py-2 px-2">日時</th>
+                                        <th className="py-2 px-2">内容</th>
+                                        <th className="py-2 px-2">サポート</th>
+                                        <th className="py-2 px-2">削除</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {history.slice().reverse().map((h, i) => (
+                                        <tr key={h.id} className="border-b border-stone-100 hover:bg-orange-50/50">
+                                            <td className="py-3 px-2 text-sm text-stone-400">
+                                                {new Date(h.date).toLocaleDateString()}<br/>
+                                                {new Date(h.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                            </td>
+                                            <td className="py-3 px-2">
+                                                <span className="font-bold text-lg text-orange-600">{h.dan}のだん</span>
+                                                <span className="ml-2 text-xs px-2 py-1 bg-orange-100 text-orange-600 rounded-full">Lv.{h.level}</span>
+                                            </td>
+                                            <td className="py-3 px-2 text-sm">
+                                                <div className="flex gap-2">
+                                                    {h.settings.isReadingVisible ? <span className="text-emerald-500">文字あり</span> : <span className="text-stone-300">文字なし</span>}
+                                                    {h.settings.isVoiceEnabled ? <span className="text-emerald-500">声あり</span> : <span className="text-stone-300">声なし</span>}
+                                                </div>
+                                            </td>
+                                            <td className="py-3 px-2 text-center">
+                                                <button onClick={() => onDelete(h.id)} className="text-stone-300 hover:text-rose-500 p-2 rounded-full hover:bg-rose-50 transition-colors">
+                                                    <Trash2 className="w-5 h-5" />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const Menu = ({ stamps, counts, onStart, onToggleStamp }) => {
+            const [selDan, setSelDan] = useState(null);
+            const dans = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+            const levels = [
+                { lv: 1, label: 'レベル 1', desc: 'かけられるかず' },
+                { lv: 2, label: 'レベル 2', desc: 'かけるかず' },
+                { lv: 3, label: 'レベル 3', desc: 'こたえ' },
+            ];
+            const isDanComplete = (d) => levels.every(l => stamps[`${d}-${l.lv}`]);
+
+            if (!selDan) {
+                return (
+                    <div className="flex flex-col items-center w-full max-w-md mx-auto p-6 space-y-8 animate-pop">
+                        <header className="text-center">
+                            <h1 className="text-5xl font-black text-orange-500 mb-2 drop-shadow-sm">九九カード</h1>
+                            <p className="text-stone-400 font-bold">どのだんを れんしゅうする？</p>
+                        </header>
+                        <div className="grid grid-cols-3 gap-4 w-full">
+                            {dans.map(d => (
+                                <button key={d} onClick={() => setSelDan(d)} 
+                                    className={`aspect-square rounded-3xl border-4 text-4xl font-black transition-all flex flex-col items-center justify-center relative
+                                        ${isDanComplete(d) ? 'bg-emerald-50 border-emerald-200 text-emerald-500' : 'bg-white border-orange-100 text-orange-400 shadow-lg active:scale-90 hover:border-orange-300'}`}
+                                >
+                                    {d}
+                                    {isDanComplete(d) && <span className="absolute text-6xl opacity-80 pointer-events-none select-none">💮</span>}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="flex flex-col items-center w-full max-w-md mx-auto p-6 space-y-6 animate-pop">
+                    <header className="text-center w-full relative mb-4">
+                        <button onClick={() => setSelDan(null)} className="absolute left-0 top-1 text-stone-400 underline font-bold hover:text-orange-400">もどる</button>
+                        <h1 className="text-5xl font-black text-orange-500">{selDan} のだん</h1>
+                    </header>
+                    <div className="flex flex-col gap-5 w-full">
+                        {levels.map(l => {
+                            const key = `${selDan}-${l.lv}`;
+                            const isStamped = !!stamps[key];
+                            const count = counts[key] || 0;
+                            return (
+                                <div key={l.lv} className={`relative p-1 rounded-[2rem] border-4 transition-all ${isStamped ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-orange-100 shadow-lg'}`}>
+                                    <div className="flex">
+                                        <button onClick={() => onStart(selDan, l.lv)} className="flex-1 p-5 text-left active:opacity-70">
+                                            <h3 className={`text-2xl font-black ${isStamped ? 'text-emerald-600' : 'text-stone-600'}`}>{l.label}</h3>
+                                            <p className="text-stone-400 text-sm font-bold mb-1">{l.desc}</p>
+                                            <div className="inline-block px-3 py-1 bg-stone-100 rounded-full text-xs font-bold text-stone-500">
+                                                {count}かい できた！
+                                            </div>
+                                        </button>
+                                        <div className="w-24 border-l-2 border-dashed border-stone-100 flex flex-col items-center justify-center gap-1 p-2">
+                                            <button 
+                                                onClick={() => count > 0 && onToggleStamp(selDan, l.lv)}
+                                                disabled={count === 0}
+                                                className={`w-16 h-16 rounded-full flex items-center justify-center transition-all relative
+                                                    ${count === 0 ? 'opacity-30 grayscale cursor-not-allowed bg-stone-100' : 'active:scale-110 active:bg-orange-50 bg-white shadow-sm border-2 border-orange-50'}
+                                                `}
+                                            >
+                                                {isStamped ? <span className="text-4xl select-none">💮</span> : <div className="text-center"><div className="text-[10px] font-bold text-stone-400 leading-tight">じしんが<br/>ついたら<br/>おしてね</div></div>}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        };
+
+        const GameScreen = ({ dan, level, settings, onExit, onComplete }) => {
+            const [qs, setQs] = useState([]);
+            const [idx, setIdx] = useState(0);
+            const [isDone, setIsDone] = useState(false);
+            const [feedback, setFeedback] = useState('idle'); 
+            const lastSpoken = useRef("");
+
+            useEffect(() => { setQs(generateQuestions(dan, level)); }, [dan, level]);
+
+            useEffect(() => {
+                if (settings.isVoiceEnabled && qs.length > 0 && !isDone && feedback === 'idle') {
+                    const q = qs[idx];
+                    const r = getReading(q.dan, q.multiplier);
+                    if (lastSpoken.current !== `${idx}-idle`) {
+                        speechService.speak(r);
+                        lastSpoken.current = `${idx}-idle`;
+                    }
+                }
+            }, [idx, qs, settings.isVoiceEnabled, isDone, feedback]);
+
+            const handleAns = (val) => {
+                if (feedback !== 'idle') return;
+                const q = qs[idx];
+                const isCorrect = (q.missingPart === 'dan' && val === q.dan) || (q.missingPart === 'multiplier' && val === q.multiplier) || (q.missingPart === 'product' && val === q.product);
+                
+                if (isCorrect) {
+                    setFeedback('correct');
+                    if (settings.isSoundEnabled) soundService.playCorrect();
+                    setTimeout(() => {
+                        setFeedback('idle');
+                        if (idx < qs.length - 1) setIdx(i => i + 1);
+                        else { setIsDone(true); onComplete(); }
+                    }, 1500);
+                } else {
+                    setFeedback('wrong');
+                    if (settings.isSoundEnabled) soundService.playWrong();
+                    setTimeout(() => setFeedback('idle'), 800);
+                }
+            };
+
+            if (qs.length === 0) return null;
+
+            if (isDone) {
+                return (
+                    // 結果画面
+                    <div className="flex flex-col items-center justify-center h-full p-8 text-center animate-pop">
+                        <div className="mb-6 animate-bounce">
+                             <div className="text-[8rem] select-none">🎉</div>
+                        </div>
+                        <h2 className="text-5xl font-black text-orange-500 mb-4">おめでとう！</h2>
+                        <p className="text-xl font-bold text-stone-500 mb-8">さいごまで できたね！</p>
+                        
+                        <div className="flex flex-col w-full gap-4 max-w-xs">
+                            <button onClick={onExit} className="w-full py-4 bg-orange-400 text-white rounded-2xl font-bold text-xl shadow-lg active:scale-95 flex items-center justify-center hover:bg-orange-500 transition-colors">
+                                <Home className="mr-2" /> メニューへ もどる
+                            </button>
+                            <button onClick={() => { setIsDone(false); setIdx(0); }} className="w-full py-4 bg-white text-stone-500 border-2 border-stone-100 rounded-2xl font-bold text-xl active:scale-95 flex items-center justify-center hover:bg-stone-50 transition-colors">
+                                <RefreshCw className="mr-2" /> もういちど
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            const q = qs[idx];
+            const reading = getReading(q.dan, q.multiplier);
+            const isSingleOption = q.options.length === 1; // 選択肢が1つ（レベル1）かどうか
+
+            const Part = ({ val, type }) => {
+                const isMiss = q.missingPart === type;
+                return (
+                    <div className="w-20 h-20 md:w-32 md:h-32 flex items-center justify-center">
+                        {isMiss ? (
+                            <div className={`w-full h-full rounded-3xl border-4 flex items-center justify-center text-4xl md:text-7xl font-black transition-all duration-300
+                                ${feedback === 'correct' ? 'border-emerald-400 text-emerald-500 bg-emerald-50' : 'border-orange-300 text-transparent bg-white border-dashed' }
+                                ${feedback === 'wrong' ? 'border-rose-300 bg-rose-50 shake' : ''}`}>
+                                {feedback === 'correct' ? val : '?'}
+                            </div>
+                        ) : (
+                            <span className="text-5xl md:text-8xl font-black text-stone-700">{val}</span>
+                        )}
+                    </div>
+                );
+            };
+
+            return (
+                <div className="flex flex-col h-full p-6">
+                    <div className="w-full bg-orange-100 h-3 rounded-full mb-8 overflow-hidden"><div className="bg-orange-400 h-full transition-all duration-500" style={{ width: `${(idx / qs.length) * 100}%` }} /></div>
+                    <header className="flex justify-between items-center mb-6">
+                        <button onClick={onExit} className="text-stone-300 hover:text-stone-500"><Home className="w-8 h-8" /></button>
+                        <div className="px-4 py-1 bg-white border border-orange-100 rounded-full text-orange-400 font-bold">{idx + 1} / {qs.length}</div>
+                    </header>
+                    <main className="flex-1 flex flex-col items-center justify-center">
+                        <div className="w-full bg-white rounded-[3rem] shadow-xl p-8 flex flex-col items-center justify-center mb-10 border-b-[8px] border-orange-50 relative min-h-[16rem]">
+                            <div className="flex items-center justify-center gap-1 md:gap-4 mb-8 w-full">
+                                <Part val={q.dan} type="dan" />
+                                <span className="text-3xl md:text-5xl text-orange-200 font-black">×</span>
+                                <Part val={q.multiplier} type="multiplier" />
+                                <span className="text-3xl md:text-5xl text-orange-200 font-black">＝</span>
+                                <Part val={q.product} type="product" />
+                            </div>
+                            {settings.isReadingVisible && <div className="text-2xl md:text-4xl font-black text-orange-500 bg-orange-50 px-8 py-3 rounded-full animate-pop tracking-widest">{reading}</div>}
+                        </div>
+                        {/* 選択肢エリア：1つの場合はFlexで中央寄せ、複数の場合はGrid */}
+                        <div className={`w-full max-w-lg ${isSingleOption ? 'flex justify-center' : 'grid grid-cols-3'} gap-3 md:gap-4`}>
+                            {q.options.map(opt => (
+                                <button key={opt} onClick={() => handleAns(opt)} disabled={feedback !== 'idle'}
+                                    className={`py-4 md:py-6 text-3xl md:text-4xl font-black bg-sky-400 text-white rounded-3xl border-b-4 border-sky-600 active:border-b-0 active:translate-y-1 active:scale-95 disabled:opacity-50 touch-manipulation shadow-md hover:bg-sky-500 transition-colors
+                                        ${isSingleOption ? 'w-full max-w-[200px]' : ''} 
+                                    `}
+                                >
+                                    {opt}
+                                </button>
+                            ))}
+                        </div>
+                    </main>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [gameState, setGameState] = useState('MENU');
+            const [currentDan, setCurrentDan] = useState(1);
+            const [currentLevel, setCurrentLevel] = useState(1);
+            const [showParentMenu, setShowParentMenu] = useState(false);
+
+            const [settings, setSettings] = useState(() => {
+                const saved = localStorage.getItem('kuku_settings');
+                return saved ? JSON.parse(saved) : { isSoundEnabled: true, isReadingVisible: true, isVoiceEnabled: false };
+            });
+            const [stamps, setStamps] = useState(() => {
+                const saved = localStorage.getItem('kuku_stamps');
+                return saved ? JSON.parse(saved) : {}; 
+            });
+            const [counts, setCounts] = useState(() => {
+                const saved = localStorage.getItem('kuku_counts');
+                return saved ? JSON.parse(saved) : {};
+            });
+            const [history, setHistory] = useState(() => {
+                const saved = localStorage.getItem('kuku_history');
+                return saved ? JSON.parse(saved) : [];
+            });
+
+            useEffect(() => { localStorage.setItem('kuku_settings', JSON.stringify(settings)); }, [settings]);
+            useEffect(() => { localStorage.setItem('kuku_stamps', JSON.stringify(stamps)); }, [stamps]);
+            useEffect(() => { localStorage.setItem('kuku_counts', JSON.stringify(counts)); }, [counts]);
+            useEffect(() => { localStorage.setItem('kuku_history', JSON.stringify(history)); }, [history]);
+
+            const handleComplete = (dan, level) => {
+                const key = `${dan}-${level}`;
+                setCounts(prev => ({ ...prev, [key]: (prev[key] || 0) + 1 }));
+                setHistory(prev => [...prev, { id: Date.now(), date: Date.now(), dan, level, settings: { ...settings } }]);
+            };
+
+            const toggleStamp = (dan, level) => {
+                const key = `${dan}-${level}`;
+                const newState = !stamps[key];
+                if (newState && settings.isSoundEnabled) soundService.playStamp();
+                setStamps(prev => ({ ...prev, [key]: newState }));
+            };
+
+            const deleteHistoryItem = (id) => {
+                if(confirm('このきろくを けしても いいですか？')) {
+                    setHistory(prev => prev.filter(h => h.id !== id));
+                }
+            };
+
+            const deleteAllHistory = () => {
+                if(confirm('ほんとうに すべてのきろくを けしても いいですか？')) {
+                    setHistory([]);
+                }
+            };
+
+            return (
+                <div className="min-h-screen bg-orange-50 text-stone-700 font-sans p-0 md:p-8">
+                    <div className="max-w-3xl mx-auto h-[100dvh] md:h-[90vh] flex flex-col bg-orange-50/50 md:bg-white md:shadow-2xl md:rounded-[3rem] overflow-hidden relative border-0 md:border-4 border-white">
+                        
+                        {/* Settings */}
+                        <div className="absolute top-4 right-4 md:top-6 md:right-6 z-40 flex gap-2 md:gap-3">
+                            <button onClick={() => setSettings(s => ({ ...s, isSoundEnabled: !s.isSoundEnabled }))}
+                                className={`p-2 md:p-3 rounded-2xl border-2 transition-all ${settings.isSoundEnabled ? 'bg-white border-orange-200 text-orange-500 shadow-md' : 'bg-transparent border-stone-200 text-stone-300'}`}
+                            >
+                                {settings.isSoundEnabled ? <Volume2 className="w-5 h-5 md:w-6 md:h-6" /> : <VolumeX className="w-5 h-5 md:w-6 md:h-6" />}
+                            </button>
+                            <button onClick={() => setSettings(s => ({ ...s, isReadingVisible: !s.isReadingVisible }))}
+                                className={`p-2 md:p-3 rounded-2xl border-2 transition-all ${settings.isReadingVisible ? 'bg-white border-orange-200 text-orange-500 shadow-md' : 'bg-transparent border-stone-200 text-stone-300'}`}
+                            >
+                                <Languages className="w-5 h-5 md:w-6 md:h-6" />
+                            </button>
+                            <button onClick={() => setSettings(s => ({ ...s, isVoiceEnabled: !s.isVoiceEnabled }))}
+                                className={`p-2 md:p-3 rounded-2xl border-2 transition-all ${settings.isVoiceEnabled ? 'bg-white border-orange-200 text-orange-500 shadow-md' : 'bg-transparent border-stone-200 text-stone-300'}`}
+                            >
+                                {settings.isVoiceEnabled ? <Mic className="w-5 h-5 md:w-6 md:h-6" /> : <MicOff className="w-5 h-5 md:w-6 md:h-6" />}
+                            </button>
+                            <button onClick={() => setShowParentMenu(true)}
+                                className="p-2 md:p-3 rounded-2xl border-2 border-stone-200 text-stone-300 bg-transparent hover:bg-stone-50 transition-all"
+                            >
+                                <UserCircle className="w-5 h-5 md:w-6 md:h-6" />
+                            </button>
+                        </div>
+
+                        {showParentMenu && (
+                            <ParentDashboard history={history} onClose={() => setShowParentMenu(false)} onDelete={deleteHistoryItem} onDeleteAll={deleteAllHistory} />
+                        )}
+
+                        {/* メインコンテンツエリア：スクロールバーガタつき防止のため scroll-stable クラス付与 */}
+                        <div className="relative z-10 flex-1 flex flex-col h-full scroll-stable pt-16">
+                            {gameState === 'MENU' ? (
+                                <Menu stamps={stamps} counts={counts} 
+                                    onStart={(d, l) => { setCurrentDan(d); setCurrentLevel(l); setGameState('PLAYING'); }} 
+                                    onToggleStamp={toggleStamp}
+                                />
+                            ) : (
+                                <GameScreen dan={currentDan} level={currentLevel} settings={settings} 
+                                    onExit={() => setGameState('MENU')} 
+                                    onComplete={() => handleComplete(currentDan, currentLevel)} 
+                                />
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
