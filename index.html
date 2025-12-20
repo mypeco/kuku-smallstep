@@ -9,14 +9,14 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* アニメーションの調整（ブレ軽減のためスケール変化を控えめに） */
+        /* アニメーションの調整 */
         @keyframes pop { 0% { transform: scale(0.95); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
         .animate-pop { animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
         @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-10px); } 75% { transform: translateX(10px); } }
         .shake { animation: shake 0.5s; }
         body { touch-action: manipulation; background-color: #fff7ed; }
         
-        /* スクロールバーによるガタつき防止：常にスクロール領域を確保 */
+        /* スクロールバーによるガタつき防止 */
         .scroll-stable { overflow-y: scroll; } 
         
         /* スクロールバー装飾 */
@@ -39,8 +39,6 @@
         const Volume2 = (props) => <IconBase {...props}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></IconBase>;
         const VolumeX = (props) => <IconBase {...props}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" x2="17" y1="9" y2="15"/><line x1="17" x2="23" y1="9" y2="15"/></IconBase>;
         const Languages = (props) => <IconBase {...props}><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></IconBase>;
-        const Mic = (props) => <IconBase {...props}><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/><line x1="8" x2="16" y1="22" y2="22"/></IconBase>;
-        const MicOff = (props) => <IconBase {...props}><line x1="2" x2="22" y1="2" y2="22"/><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/><path d="M5 10v2a7 7 0 0 0 12 5"/><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><line x1="12" x2="12" y1="19" y2="22"/><line x1="8" x2="16" y1="22" y2="22"/></IconBase>;
         const Home = (props) => <IconBase {...props}><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></IconBase>;
         const RefreshCw = (props) => <IconBase {...props}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></IconBase>;
         const UserCircle = (props) => <IconBase {...props}><circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662"/></IconBase>;
@@ -104,16 +102,6 @@
         }
         const soundService = new SoundService();
 
-        class SpeechService {
-            speak(text) {
-                window.speechSynthesis.cancel();
-                const uttr = new SpeechSynthesisUtterance(text);
-                uttr.lang = 'ja-JP'; uttr.rate = 1.0; uttr.pitch = 1.1;
-                window.speechSynthesis.speak(uttr);
-            }
-        }
-        const speechService = new SpeechService();
-
         // --- Logic ---
         const getReading = (dan, multiplier) => kukuReadings[dan][multiplier - 1];
         const generateQuestions = (dan, level) => {
@@ -174,7 +162,6 @@
                                             <td className="py-3 px-2 text-sm">
                                                 <div className="flex gap-2">
                                                     {h.settings.isReadingVisible ? <span className="text-emerald-500">文字あり</span> : <span className="text-stone-300">文字なし</span>}
-                                                    {h.settings.isVoiceEnabled ? <span className="text-emerald-500">声あり</span> : <span className="text-stone-300">声なし</span>}
                                                 </div>
                                             </td>
                                             <td className="py-3 px-2 text-center">
@@ -270,20 +257,8 @@
             const [idx, setIdx] = useState(0);
             const [isDone, setIsDone] = useState(false);
             const [feedback, setFeedback] = useState('idle'); 
-            const lastSpoken = useRef("");
 
             useEffect(() => { setQs(generateQuestions(dan, level)); }, [dan, level]);
-
-            useEffect(() => {
-                if (settings.isVoiceEnabled && qs.length > 0 && !isDone && feedback === 'idle') {
-                    const q = qs[idx];
-                    const r = getReading(q.dan, q.multiplier);
-                    if (lastSpoken.current !== `${idx}-idle`) {
-                        speechService.speak(r);
-                        lastSpoken.current = `${idx}-idle`;
-                    }
-                }
-            }, [idx, qs, settings.isVoiceEnabled, isDone, feedback]);
 
             const handleAns = (val) => {
                 if (feedback !== 'idle') return;
@@ -393,7 +368,8 @@
 
             const [settings, setSettings] = useState(() => {
                 const saved = localStorage.getItem('kuku_settings');
-                return saved ? JSON.parse(saved) : { isSoundEnabled: true, isReadingVisible: true, isVoiceEnabled: false };
+                // 音声(Voice)の設定を削除
+                return saved ? JSON.parse(saved) : { isSoundEnabled: true, isReadingVisible: true };
             });
             const [stamps, setStamps] = useState(() => {
                 const saved = localStorage.getItem('kuku_stamps');
@@ -454,11 +430,7 @@
                             >
                                 <Languages className="w-5 h-5 md:w-6 md:h-6" />
                             </button>
-                            <button onClick={() => setSettings(s => ({ ...s, isVoiceEnabled: !s.isVoiceEnabled }))}
-                                className={`p-2 md:p-3 rounded-2xl border-2 transition-all ${settings.isVoiceEnabled ? 'bg-white border-orange-200 text-orange-500 shadow-md' : 'bg-transparent border-stone-200 text-stone-300'}`}
-                            >
-                                {settings.isVoiceEnabled ? <Mic className="w-5 h-5 md:w-6 md:h-6" /> : <MicOff className="w-5 h-5 md:w-6 md:h-6" />}
-                            </button>
+                            {/* マイクボタン削除 */}
                             <button onClick={() => setShowParentMenu(true)}
                                 className="p-2 md:p-3 rounded-2xl border-2 border-stone-200 text-stone-300 bg-transparent hover:bg-stone-50 transition-all"
                             >
